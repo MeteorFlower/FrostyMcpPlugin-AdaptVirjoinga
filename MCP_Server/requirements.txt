@@ -1,0 +1,9 @@
+# Frosty Editor MCP Bridge - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# MCP SDK (Model Context Protocol) - Required for AI agent communication
+# Pin to 1.x: mcp 2.0 removed mcp.server.fastmcp (FastMCP), which this bridge needs
+mcp>=1.0.0,<2.0.0
+
+# Windows API bindings - Required for Named Pipe communication
+pywin32>=306
