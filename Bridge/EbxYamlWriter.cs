@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using FrostySdk.Managers.Entries;
 
 // NOTE: Vendored copy of wavebend/FrostyToolsuite (DragonAge branch) EbxYamlWriter,
 // adapted to run on stock CadeEvs FrostyToolsuite v1.0.6.3 (which has no

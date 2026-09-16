@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using FrostySdk.Managers.Entries;
 
 namespace FrostyMcpPlugin.Bridge
 {
@@ -203,8 +204,12 @@ namespace FrostyMcpPlugin.Bridge
                 {
                     if (xml)
                     {
-                        using (EbxXmlWriter writer = new EbxXmlWriter(ms, App.AssetManager))
-                            writer.WriteObjects(asset.RootObjects);
+                        // Virjoinga fork: EbxXmlWriter 改成 (EbxAsset, Stream, AssetManager,
+                        // tabSize, writeOffsets), 且 WriteObjects() 不再收参数
+                        // (内部用 asset.Objects)。官方 1.0.6.3 的旧签名是
+                        // (Stream, AssetManager) + WriteObjects(IEnumerable<object>)。
+                        using (EbxXmlWriter writer = new EbxXmlWriter(asset, ms, App.AssetManager, 4, false))
+                            writer.WriteObjects();
                     }
                     else
                     {

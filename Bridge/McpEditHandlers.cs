@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
+using FrostySdk.Managers.Entries;
 
 namespace FrostyMcpPlugin.Bridge
 {
