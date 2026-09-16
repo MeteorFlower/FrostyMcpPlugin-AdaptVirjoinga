@@ -1,4 +1,8 @@
-# Frosty MCP Bridge
+# FrostyMcpPlugin-AdaptVirjoinga
+
+> **Adapted for [Virjoinga/FrostyToolsuite-1](https://github.com/Virjoinga/FrostyToolsuite-1)** —
+> the Frosty Tool Suite **1.0.7** fork reworked for *Plants vs. Zombies: Battle for Neighborville*.
+> Build against that tree, not the official CadeEvs one.
 
 A plugin for [Frosty Editor](https://github.com/CadeEvs/FrostyToolsuite) that exposes the currently loaded game project to any MCP client (Cursor, Claude Desktop, Claude Code, OpenAI Codex, and others) over the [Model Context Protocol](https://modelcontextprotocol.io/).
 
