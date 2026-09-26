@@ -8,7 +8,7 @@ A plugin for [Frosty Editor](https://github.com/CadeEvs/FrostyToolsuite) that ex
 
 It lets an agent search and edit EBX, manage bundles, inspect Frostbite SDK types (Type Explorer), and drive blueprint connections without clicking through the editor UI.
 
-This plugin talks to **whatever profile Frosty has loaded**. Battlefield 1 helpers are included, but they should only be used when the BF1 profile is active.
+This plugin talks to **whatever profile Frosty has loaded**. Here it is driven against a *Plants vs. Zombies: Battle for Neighborville* profile.
 
 ## What works
 
@@ -16,8 +16,8 @@ This plugin talks to **whatever profile Frosty has loaded**. Battlefield 1 helpe
 - Query / open / export EBX, RES, chunks, and bundles
 - Property, event, and link connections; create / duplicate / remove blueprint objects
 - Type Explorer: search SDK types, inspect fields, walk nested `PointerRef` / `List` / struct types
+- NetworkRegistry objects: list, add and remove external pointer refs
 - Texture, mesh, Lua, sound, atlas, and schematic helpers (when the matching Frosty plugins are loaded)
-- Optional Battlefield 1 helpers: NetworkRegistry, map bundles, root Flags
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Cursor / Claude / Codex  --stdio-->  mcp_frosty.py  --Named Pipe-->  FrostyMcpPl
 Wire protocol: `uint32_le(payload_length)` + UTF-8 JSON-RPC (same layout as the Cheat Engine MCP bridge).
 
 Pipe name: `\\.\pipe\Frosty_MCP_Bridge_v1`  
-Plugin version: **1.12.0**
+Plugin version: **1.13.0**
 
 # Usage
 
@@ -46,7 +46,7 @@ Build `FrostyMcpPlugin.sln` as **Developer - Debug | x64**. A PostBuild step cop
 Start Frosty, load a profile, and check the editor log:
 
 ```
-[MCP v1.12.0] Listening on: Frosty_MCP_Bridge_v1
+[MCP v1.13.0] Listening on: Frosty_MCP_Bridge_v1
 ```
 
 Menu: **Tools → MCP Bridge Status**
@@ -69,7 +69,7 @@ Shared stdio launch:
 |-------|--------|
 | `command` | `python` (or `C:/Users/You/AppData/Local/Python/pythoncore-3.14-64/python.exe`) |
 | `args` | `["D:/path/to/FrostyMcpPlugin/MCP_Server/mcp_frosty.py"]` |
-| `env` | `FROSTY_MCP_VERSION=1.12.0` (optional; bump it when tool schemas change so clients reload) |
+| `env` | `FROSTY_MCP_VERSION=1.13.0` (optional; bump it when tool schemas change so clients reload) |
 
 After changing tools, bump `FROSTY_MCP_VERSION` and restart the MCP server in that client. Call `ping` first; it should return `profile_loaded: true` once Frosty has a profile open.
 
@@ -85,7 +85,7 @@ Or: Cursor Settings → MCP.
     "frosty": {
       "command": "python",
       "args": ["D:/path/to/FrostyMcpPlugin/MCP_Server/mcp_frosty.py"],
-      "env": { "FROSTY_MCP_VERSION": "1.12.0" }
+      "env": { "FROSTY_MCP_VERSION": "1.13.0" }
     }
   }
 }
@@ -127,7 +127,7 @@ startup_timeout_sec = 20
 tool_timeout_sec = 120
 
 [mcp_servers.frosty.env]
-FROSTY_MCP_VERSION = "1.12.0"
+FROSTY_MCP_VERSION = "1.13.0"
 ```
 
 CLI equivalent:
@@ -220,17 +220,21 @@ Some MCP tools call into other editor plugins by reflection. They no-op or retur
 |------|----------|
 | Query | `ping`, `get_editor_info`, `search_ebx`, `get_ebx_xml` / `yaml`, `list_modified_assets` |
 | SDK types | `search_types`, `get_type_info`, `get_type_field`, `list_type_namespaces` |
-| EBX edit | `get/set_ebx_property`, `get/set_ebx_field`, `create_ebx`, `duplicate_ebx`, `revert_asset` |
+| EBX edit | `get/set_ebx_property`, `get/set_ebx_field`, `create_ebx`, `duplicate_ebx`, `revert_asset`, `set_root_flags` |
 | Bundles | `add_to_bundle`, `safe_add_to_bundle`, `add_to_bundle_smart`, `list_bundles` |
-| Blueprint | `list/create/duplicate_component`, `add_*_connection`, `list_interface` |
+| Blueprint | `list/create/duplicate/remove_component`, `remove_ebx_item`, `add_*_connection`, `list_interface` |
+| NetworkRegistry | `list_network_registry`, `add_to_network_registry`, `remove_from_network_registry` |
 | Media | texture, mesh, lua, wav, atlas, svg |
-| BF1 helpers | `set_root_flags`, `add_to_network_registry`, `add_to_bf1_map_bundles` |
+
+`get_ebx_entry` reports bundle membership in four fields. `bundles` is the **effective** set —
+vanilla, minus `removed_bundles`, plus `added_bundles` — and the three parts are reported
+separately too. Reach for `original_bundles` when you want the untouched vanilla list.
 
 The Python file `MCP_Server/mcp_frosty.py` is the source of truth for tool names and arguments.
 
 ## Contribution guidelines
 
-- Keep the **core bridge** (pipe server, generic EBX / bundle / connection tools) game-agnostic. If you add something that only makes sense for one title, gate it on that Frosty profile (for example only document / call BF1 NetworkRegistry helpers when `get_editor_info` reports `bf1`).
+- Keep the **core bridge** (pipe server, generic EBX / bundle / connection tools) game-agnostic. If you add something that only makes sense for one title, say so in the tool's docstring.
 - Document new MCP tools in this README and in the `@mcp.tool()` docstring. Bump `McpBridgeServer.Version`, `[assembly: PluginVersion]`, and `FROSTY_MCP_VERSION` together so MCP clients reload the schema.
 - Prefer comments on new handlers: reflection against Frosty APIs is brittle, and the next person needs to know *why* an optional argument is padded.
 
