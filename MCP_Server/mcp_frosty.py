@@ -295,7 +295,7 @@ mcp = FastMCP(
     MCP_SERVER_NAME,
     instructions=(
         "Frosty Editor MCP bridge v"
-        + os.environ.get("FROSTY_MCP_VERSION", "1.12.0")
+        + os.environ.get("FROSTY_MCP_VERSION", "1.13.0")
         + ". Includes Type Explorer (search_types, get_type_info, get_type_field, "
         "list_type_namespaces) and BF1 helpers: set_root_flags, add_to_network_registry, "
         "get_internal_pointer_ref, list_network_registry, safe_add_to_bundle, add_to_bf1_map_bundles."
@@ -481,7 +481,12 @@ def search_ebx(
 
 @mcp.tool()
 def get_ebx_entry(name: str = "", guid: str = "") -> str:
-    """Get EBX asset metadata, bundles and linked assets by name or GUID."""
+    """Get EBX metadata, linked assets, and bundle membership.
+
+    `bundles` is the effective list (vanilla minus removed, plus editor-added),
+    matching the Frosty Bundles tab. Also returns original_bundles, added_bundles
+    (new memberships like a duplicated MpSoldier2), and removed_bundles.
+    """
     return format_result(frosty_client.send_command("get_ebx_entry", {
         "name": name,
         "guid": guid,
@@ -1279,6 +1284,59 @@ def remove_component(
     if index >= 0:
         params["index"] = index
     return format_result(frosty_client.send_command("remove_component", params))
+
+
+@mcp.tool()
+def remove_ebx_item(
+    name: str = "",
+    guid: str = "",
+    path: str = "",
+    class_guid: str = "",
+    index: int = -1,
+    indices: str = "",
+    remove_all: bool = False,
+    remove_object: bool = True,
+    cleanup_connections: bool = True,
+    component_type: str = "",
+    type_index: int = 0,
+) -> str:
+    """Frosty property-grid 'Remove item': delete an element from any EBX array.
+
+    Works anywhere Frosty shows Remove item: Components, Objects, Children,
+    MemberDatas, Property/Event/LinkConnections, Interface Fields/Events, nested
+    lists on a host object (e.g. StaticModelGroupEntityData.Components).
+
+    Path examples:
+      - Components[1]
+      - Objects[0]
+      - Object.Components[1]   (walks PointerRef Internal)
+      - $PropertyConnections[3]
+      - $EventConnections[0]
+      - Fields[0]  (with class_guid of InterfaceDescriptorData)
+      - MemberDatas[2]  (with class_guid of the host)
+
+    indices: JSON array string like '[2,0]' (removed high-to-low).
+    all=True empties the list. remove_object/cleanup_connections apply only
+    to Internal PointerRef objects (not connection structs).
+    """
+    params = {
+        "name": name,
+        "guid": guid,
+        "path": path,
+        "class_guid": class_guid,
+        "remove_object": remove_object,
+        "cleanup_connections": cleanup_connections,
+        "all": remove_all,
+        "type_index": type_index,
+    }
+    if index >= 0:
+        params["index"] = index
+    if component_type:
+        params["component_type"] = component_type
+    raw = (indices or "").strip()
+    if raw:
+        params["indices"] = json.loads(raw)
+    return format_result(frosty_client.send_command("remove_ebx_item", params))
 
 
 @mcp.tool()

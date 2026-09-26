@@ -82,6 +82,7 @@ namespace FrostyMcpPlugin.Bridge
                 ["get_component_property"] = McpBlueprintHandlers.GetComponentProperty,
                 ["set_component_property"] = McpBlueprintHandlers.SetComponentProperty,
                 ["remove_component"] = McpBlueprintHandlers.RemoveComponent,
+                ["remove_ebx_item"] = McpBlueprintHandlers.RemoveEbxItem,
                 ["list_ebx_class_types"] = McpBlueprintHandlers.ListEbxClassTypes,
                 ["create_ebx_class"] = McpBlueprintHandlers.CreateEbxClass,
 

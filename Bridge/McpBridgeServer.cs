@@ -18,7 +18,7 @@ namespace FrostyMcpPlugin.Bridge
     public sealed class McpBridgeServer
     {
         public const string PipeName = "Frosty_MCP_Bridge_v1";
-        public const string Version = "1.12.0";
+        public const string Version = "1.13.0";
         public const int MaxRequestBytes = 32 * 1024 * 1024;
 
         public static McpBridgeServer Instance { get; } = new McpBridgeServer();

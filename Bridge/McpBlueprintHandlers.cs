@@ -713,6 +713,144 @@ namespace FrostyMcpPlugin.Bridge
             }
         }
 
+        /// <summary>
+        /// Frosty property-grid "Remove item": delete an element from any EBX array
+        /// (Components, Objects, MemberDatas, PropertyConnections, Interface Fields, …).
+        /// </summary>
+        public static object RemoveEbxItem(JObject p)
+        {
+            if (!TryLoadBlueprint(p, out EbxAssetEntry entry, out EbxAsset asset, out object err))
+                return err;
+
+            string path = (p.Value<string>("path") ?? "").Trim();
+            if (string.IsNullOrEmpty(path))
+                return McpHandlers.Error(
+                    "path is required (e.g. 'Components[1]', 'Objects[0]', '$PropertyConnections[3]', 'Fields[0]')",
+                    "INVALID_PARAMS");
+
+            bool removeObject = p.Value<bool?>("remove_object") ?? true;
+            bool cleanupConnections = p.Value<bool?>("cleanup_connections") ?? true;
+            bool all = p.Value<bool?>("all") ?? false;
+
+            try
+            {
+                object host = asset.RootObject;
+                string walkPath = path.StartsWith("$") ? path.Substring(1) : path;
+
+                if (!path.StartsWith("$"))
+                {
+                    string classGuidStr = p.Value<string>("class_guid") ?? p.Value<string>("component_guid");
+                    if (!string.IsNullOrEmpty(classGuidStr) && Guid.TryParse(classGuidStr, out Guid hostGuid))
+                    {
+                        object found = FindObjectByClassGuid(asset, hostGuid);
+                        if (found != null)
+                            host = found;
+                    }
+                    else
+                    {
+                        string typeName = p.Value<string>("component_type") ?? p.Value<string>("host_type");
+                        int typeIndex = p.Value<int?>("type_index") ?? 0;
+                        if (!string.IsNullOrEmpty(typeName))
+                        {
+                            object resolved = ResolveComponent(asset, new JObject
+                            {
+                                ["type"] = typeName,
+                                ["type_index"] = typeIndex
+                            }, out _);
+                            if (resolved != null)
+                                host = resolved;
+                        }
+                    }
+                }
+
+                if (!TryResolveListFromPath(host, walkPath, p.Value<int?>("index") ?? -1, out IList list, out string arrayPath, out int parsedIndex, out object hostObj))
+                    return McpHandlers.Error("Could not resolve list at path: " + path, "NOT_FOUND");
+
+                List<int> toRemove = new List<int>();
+                if (all)
+                {
+                    for (int i = list.Count - 1; i >= 0; i--)
+                        toRemove.Add(i);
+                }
+                else if (p["indices"] is JArray idxArr)
+                {
+                    foreach (JToken t in idxArr)
+                        toRemove.Add(t.Value<int>());
+                    toRemove = toRemove.Distinct().OrderByDescending(i => i).ToList();
+                }
+                else
+                {
+                    if (parsedIndex < 0)
+                        return McpHandlers.Error("Provide path with [index], or index=, or indices=[], or all=true", "INVALID_PARAMS");
+                    toRemove.Add(parsedIndex);
+                }
+
+                List<object> removed = new List<object>();
+                foreach (int idx in toRemove)
+                {
+                    if (idx < 0 || idx >= list.Count)
+                        return McpHandlers.Error("Index out of range: " + idx + " (count=" + list.Count + ")", "INVALID_PARAMS");
+
+                    object item = list[idx];
+                    object unwrapped = UnwrapPointer(item);
+                    Guid itemGuid = TryGetClassGuid(unwrapped);
+                    string itemType = unwrapped?.GetType().Name ?? item?.GetType().Name ?? "null";
+
+                    if (unwrapped != null && ReferenceEquals(unwrapped, asset.RootObject))
+                        return McpHandlers.Error("Cannot remove root object", "FORBIDDEN");
+
+                    list.RemoveAt(idx);
+
+                    bool didRemoveObject = false;
+                    int connectionsCleared = 0;
+                    if (itemGuid != Guid.Empty && unwrapped != null && !unwrapped.GetType().IsValueType)
+                    {
+                        if (cleanupConnections)
+                        {
+                            int beforeP = CountList(asset.RootObject, "PropertyConnections");
+                            int beforeE = CountList(asset.RootObject, "EventConnections");
+                            int beforeL = CountList(asset.RootObject, "LinkConnections");
+                            RemoveConnectionsTouching(asset.RootObject, itemGuid);
+                            connectionsCleared =
+                                (beforeP - CountList(asset.RootObject, "PropertyConnections")) +
+                                (beforeE - CountList(asset.RootObject, "EventConnections")) +
+                                (beforeL - CountList(asset.RootObject, "LinkConnections"));
+                        }
+                        if (removeObject && asset.Objects != null && asset.Objects.Cast<object>().Any(o => ReferenceEquals(o, unwrapped)))
+                        {
+                            asset.RemoveObject(unwrapped);
+                            didRemoveObject = true;
+                        }
+                    }
+
+                    removed.Add(new Dictionary<string, object>
+                    {
+                        ["index"] = idx,
+                        ["type"] = itemType,
+                        ["class_guid"] = itemGuid == Guid.Empty ? null : itemGuid.ToString(),
+                        ["removed_object"] = didRemoveObject,
+                        ["connections_cleared"] = connectionsCleared
+                    });
+                }
+
+                SaveAsset(entry, asset);
+                return new Dictionary<string, object>
+                {
+                    ["success"] = true,
+                    ["name"] = entry.Name,
+                    ["path"] = arrayPath,
+                    ["host_type"] = hostObj?.GetType().Name,
+                    ["remaining"] = list.Count,
+                    ["removed_count"] = removed.Count,
+                    ["removed"] = removed
+                };
+            }
+            catch (Exception ex)
+            {
+                return McpHandlers.Error(ex.Message, "REMOVE_FAILED");
+            }
+        }
+
         // =====================================================================
         // InterfaceDescriptorData — Fields / InputEvents / OutputEvents
         // (BF1DevPlugin.Base.Blueprint CreateFields / CreateInputEvents / ...)
@@ -2253,6 +2391,100 @@ namespace FrostyMcpPlugin.Bridge
 
             FieldInfo fi = host.GetType().GetField(name, flags);
             return fi?.GetValue(host);
+        }
+
+        private static object GetMemberValue(object host, string name)
+        {
+            return GetListMember(host, name);
+        }
+
+        private static object UnwrapPointer(object o)
+        {
+            if (o is PointerRef pr && pr.Type == PointerRefType.Internal && pr.Internal != null)
+                return pr.Internal;
+            return o;
+        }
+
+        private static Guid TryGetClassGuid(object obj)
+        {
+            try
+            {
+                if (obj == null || obj is PointerRef || obj.GetType().IsValueType)
+                    return Guid.Empty;
+                return GetClassGuid(obj);
+            }
+            catch
+            {
+                return Guid.Empty;
+            }
+        }
+
+        private static int CountList(object host, string name)
+        {
+            return GetListMember(host, name) is IList list ? list.Count : 0;
+        }
+
+        private static bool TryResolveListFromPath(object start, string path, int fallbackIndex, out IList list, out string arrayPath, out int index, out object host)
+        {
+            list = null;
+            arrayPath = path;
+            index = fallbackIndex;
+            host = start;
+            if (start == null || string.IsNullOrWhiteSpace(path))
+                return false;
+
+            string[] parts = path.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+            object current = UnwrapPointer(start);
+            for (int p = 0; p < parts.Length; p++)
+            {
+                string part = parts[p];
+                int bracket = part.IndexOf('[');
+                string name = bracket >= 0 ? part.Substring(0, bracket) : part;
+                int partIndex = -1;
+                if (bracket >= 0)
+                {
+                    int close = part.IndexOf(']', bracket);
+                    if (close > bracket)
+                        int.TryParse(part.Substring(bracket + 1, close - bracket - 1), out partIndex);
+                }
+
+                object member = GetMemberValue(current, name);
+                if (member == null)
+                    return false;
+
+                bool last = p == parts.Length - 1;
+                if (last)
+                {
+                    object maybeList = member is PointerRef ? UnwrapPointer(member) : member;
+                    if (maybeList is IList l)
+                    {
+                        list = l;
+                        host = current;
+                        arrayPath = name;
+                        if (partIndex >= 0)
+                            index = partIndex;
+                        else if (fallbackIndex >= 0)
+                            index = fallbackIndex;
+                        return true;
+                    }
+                    return false;
+                }
+
+                if (member is IList mid)
+                {
+                    int i = partIndex >= 0 ? partIndex : 0;
+                    if (i < 0 || i >= mid.Count)
+                        return false;
+                    current = UnwrapPointer(mid[i]);
+                }
+                else
+                {
+                    current = UnwrapPointer(member);
+                }
+                if (current == null)
+                    return false;
+            }
+            return false;
         }
 
         /// <summary>

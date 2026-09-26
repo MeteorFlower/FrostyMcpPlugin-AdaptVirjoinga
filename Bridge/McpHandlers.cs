@@ -161,11 +161,7 @@ namespace FrostyMcpPlugin.Bridge
 
             Dictionary<string, object> result = SerializeEbxEntry(entry);
             result["success"] = true;
-            result["bundles"] = entry.Bundles.Select(id =>
-            {
-                BundleEntry be = App.AssetManager.GetBundleEntry(id);
-                return be?.Name ?? id.ToString();
-            }).ToList();
+            AttachBundleInfo(result, entry);
             result["linked_assets"] = entry.LinkedAssets.Select(SerializeAssetEntry).ToList();
             return result;
         }
@@ -710,6 +706,37 @@ namespace FrostyMcpPlugin.Bridge
                 ["is_modified"] = entry.IsModified,
                 ["is_dirty"] = entry.IsDirty
             };
+        }
+
+        /// <summary>
+        /// Frosty stores vanilla membership in Bundles, editor-added ones in AddedBundles,
+        /// and editor-removed ones in RemBundles. The Properties Bundles tab uses all three.
+        /// </summary>
+        internal static void AttachBundleInfo(Dictionary<string, object> result, AssetEntry entry)
+        {
+            if (result == null || entry == null || App.AssetManager == null)
+                return;
+
+            result["bundles"] = ResolveBundleNames(entry.EnumerateBundles());
+            result["original_bundles"] = ResolveBundleNames(entry.Bundles);
+            result["added_bundles"] = ResolveBundleNames(entry.AddedBundles);
+            result["removed_bundles"] = ResolveBundleNames(entry.RemBundles);
+            result["added_bundle_count"] = entry.AddedBundles?.Count ?? 0;
+            result["removed_bundle_count"] = entry.RemBundles?.Count ?? 0;
+        }
+
+        internal static List<string> ResolveBundleNames(IEnumerable<int> ids)
+        {
+            List<string> names = new List<string>();
+            if (ids == null || App.AssetManager == null)
+                return names;
+
+            foreach (int id in ids)
+            {
+                BundleEntry be = App.AssetManager.GetBundleEntry(id);
+                names.Add(be?.Name ?? id.ToString());
+            }
+            return names;
         }
 
         internal static Dictionary<string, object> Error(string message, string code)
